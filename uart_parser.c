@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#define SOF_BYTE        0xAA
+#define MAX_PAYLOAD     16
+#define TIMEOUT_MS      50
+#define TIMEOUT_GAP_MS  185
+
 typedef enum {
     WAIT_FOR_SOF,
     READ_CMD,
@@ -13,26 +18,25 @@ typedef struct {
     State state;
     uint8_t cmd;
     uint8_t len;
-    uint8_t payload[16];
+    uint8_t payload[MAX_PAYLOAD];
     uint8_t index;
     uint8_t checksum;
     uint32_t last_time;
     uint32_t timeout;
 } Parser;
 
-int parse_byte(Parser *p, uint8_t byte, uint32_t time) {
-
-    if (p->timeout > 0 && p->last_time != 0) {
-        if (time - p->last_time > p->timeout) {
-            p->state = WAIT_FOR_SOF;
-            return -2;
-        }
+int parse_byte(Parser *p, uint8_t byte, uint32_t time)
+{
+    /* timeout check */
+    if (p->last_time != 0 && (time - p->last_time > p->timeout)) {
+        p->state = WAIT_FOR_SOF;
+        return -2;
     }
 
-    switch (p->state) {
-
+    switch (p->state)
+    {
         case WAIT_FOR_SOF:
-            if (byte == 0xAA) {
+            if (byte == SOF_BYTE) {
                 p->state = READ_CMD;
                 p->checksum = 0;
                 p->index = 0;
@@ -68,17 +72,19 @@ int parse_byte(Parser *p, uint8_t byte, uint32_t time) {
             if (p->checksum == byte) {
                 printf("FRAME OK CMD=0x%02X LEN=%d PAYLOAD=[", p->cmd, p->len);
 
-                for (int i = 0; i < p->len; i++) {
+                for (uint8_t i = 0; i < p->len; i++) {
                     printf("%02X", p->payload[i]);
                     if (i < p->len - 1) printf(" ");
                 }
 
                 printf("]\n");
+
                 p->state = WAIT_FOR_SOF;
                 p->last_time = time;
                 return 1;
             } else {
                 printf("CHECKSUM ERROR\n");
+
                 p->state = WAIT_FOR_SOF;
                 p->last_time = time;
                 return -1;
@@ -89,14 +95,13 @@ int parse_byte(Parser *p, uint8_t byte, uint32_t time) {
     return 0;
 }
 
-int main() {
-
-    Parser p;
+int main()
+{
+    Parser p = {0};
     p.state = WAIT_FOR_SOF;
-    p.timeout = 50;
-    p.last_time = 0;
+    p.timeout = TIMEOUT_MS;
 
-    uint8_t data[] = {
+        uint8_t data[] = {
         0xAA, 0x01, 0x03, 0x10, 0x20, 0x30, 0x02,
         0x10
     };
@@ -108,12 +113,9 @@ int main() {
 
     int size = sizeof(data) / sizeof(data[0]);
 
-    for (int i = 0; i < size; i++) {
-
-        if (i == 6)
-            printf("t=%2dms byte=0x22 -> ", time[i]);   
-        else
-            printf("t=%2dms byte=0x%02X -> ", time[i], data[i]);
+    for (int i = 0; i < size; i++)
+    {
+        printf("t=%3ums  byte=0x%02X -> ", time[i], data[i]);
 
         int result = parse_byte(&p, data[i], time[i]);
 
@@ -121,12 +123,13 @@ int main() {
             printf("\n");
         }
         else if (result == -2) {
+            printf("TIMEOUT (%dms gap > %dms) -- parser reset\n",
+                   TIMEOUT_GAP_MS, TIMEOUT_MS);
 
-            printf("TIMEOUT (185ms gap > %dms) -- parser reset\n", p.timeout);
-
-            printf("t=%2dms byte=0x%02X -> ", time[i], data[i]);
+            printf("t=%3ums  byte=0x%02X -> ", time[i], data[i]);
             parse_byte(&p, data[i], time[i]);
-            printf("receiving... (re-fed after reset)\n");
+
+            printf("receiving...\n");
         }
         else {
             printf("receiving...\n");
@@ -134,4 +137,4 @@ int main() {
     }
 
     return 0;
-}
+}  
