@@ -111,7 +111,7 @@ int main() {
     for (int i = 0; i < size; i++) {
 
         if (i == 6)
-            printf("t=%2dms byte=0x22 -> ", time[i]);   // expected output format
+            printf("t=%2dms byte=0x22 -> ", time[i]);   
         else
             printf("t=%2dms byte=0x%02X -> ", time[i], data[i]);
 
